@@ -1,4 +1,4 @@
-from metaflow import FlowSpec, step, card, conda_base, current, Parameter, Flow, trigger
+from metaflow import FlowSpec, step, card, conda_base, current, Parameter, Flow, trigger, retry, catch, timeout
 from metaflow.cards import Markdown, Table, Image, Artifact
 
 URL = "https://outerbounds-datasets.s3.us-west-2.amazonaws.com/taxi/latest.parquet"
@@ -25,9 +25,13 @@ class TaxiFarePrediction(FlowSpec):
         ]
 
         for f in data_filters:
-            df = df[f]
+            try: 
+                df = df[f]
+            except:
+                print(f"The following filter was not applied: {f}")
         return df
 
+    @catch(var="feature_transform_and_train_test_split")
     @step
     def start(self):
 
@@ -43,6 +47,9 @@ class TaxiFarePrediction(FlowSpec):
         self.y = self.df["total_amount"].values
         self.next(self.linear_model)
 
+    @catch(var="model_and_run_results")
+    @retry
+    @timeout(minutes=15)
     @step
     def linear_model(self):
         "Fit a single variable, linear model to the data."
@@ -80,6 +87,7 @@ class TaxiFarePrediction(FlowSpec):
         return rows
                 
     
+    @catch(var="validate")
     @card(type="corise")
     @step
     def validate(self):
